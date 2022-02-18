@@ -3,8 +3,12 @@ We propose a method for identifying a set of de novo representative genes, terme
 
 
 In order to perform the SG identification, a read count matrix and a record of the species with its respective genes and information of gene lengths is needed. 
+The data used for the analysis provided by Borderes M, et al* can be found at https://zenodo.org/record/4306051#.Yg5xgy8w2u5
 
-The data used for the analysis provided by Borderes M, et al can be found at https://zenodo.org/record/4306051#.Yg5xgy8w2u5
+* Functions.R: Contains the functions used for SG optimization
+* SG_refinement_SCG.R: Main for optimizing the SGs
+* abundance_profiles.R: Takes the optimized SGs from SG_refinement_SCG.R and creates relative abundance estimates.
+* mspminer_format_conversion.R: Takes the data fra Borderes M, et al* and converts it to the format used for SG_refinement_SCG.R
+* tax_df.RDS: Created using the information in the supplementaty file, Table S3 provided by Borderes M, et al*
 
-The tax_df.RDS has been created using the information in the supplementaty file, Table S3 provided by
-Borderes M, et al. A comprehensive evaluation of binning methods to recover human gut microbial species from a non-redundant reference gene catalog. NAR Genom Bioinform. 2021 Mar 1;3(1):lqab009.
+*Borderes M, et al. A comprehensive evaluation of binning methods to recover human gut microbial species from a non-redundant reference gene catalog. NAR Genom Bioinform. 2021 Mar 1;3(1):lqab009.

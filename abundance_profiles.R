@@ -2,16 +2,20 @@
 
 library(phyloseq)
 library(forcats)
-library("ggplot2")
+library(ggplot2)
 library(MASS)
 library(ggpubr) # for plotting the rel abundance together
+library(DAtest)
+require(dplyr)
+require(tibble)
+library(gridExtra)
 
-
-work_dir = "/Users/trinezachariasen/Documents/PhD-Metagenomics/MSPminer_benchmark/Github_versions/"
+work_dir = "/Users/trinezachariasen/Library/CloudStorage/OneDrive-DanmarksTekniskeUniversitet/PhD-Metagenomics/MSPminer_benchmark/Github_versions/"
 GeneLengths <- readRDS(paste(work_dir, 'SGC_genelengths.RDS', sep="")) # The gene lengths
 outputs_parallel <- readRDS(file=paste(work_dir,'MSP_SGC_refined_coabundance.RDS',sep='')) # contain the SGs of the Clusters
 Clusterlist <- readRDS(paste(work_dir, "MSP_coabundance_SGC.RDS", sep="")) # read count matrices for the Clusters
 tax_df <- readRDS(paste(work_dir,"tax_df.RDS", sep=""))
+true_tax <- t(read.csv("/Users/trinezachariasen/Library/CloudStorage/OneDrive-DanmarksTekniskeUniversitet/PhD-Metagenomics/MSPminer_benchmark/true_abundance.csv", header = FALSE, sep=";", row.names=1, col.names = c("",rownames(init.read.matrix))))
 
 
 #setting important variables
@@ -129,7 +133,7 @@ lvls <- vulgatus[order(vulgatus$Abundance, decreasing = TRUE), c(2)]
 
 filling <- fct_reorder(psmelt(final.physeq)$Species, psmelt(final.physeq)$Abundance) #reuse the colors for both figures
 
-p1 <- psmelt(final.physeq) %>%
+p1 <- psmelt(final.physeq) %>% 
   ggplot(data=.,  aes(x=substring(Sample, 8), y = Abundance, fill = filling)) + 
   geom_bar(stat = "identity") +
   xlab("Sample") + theme_minimal() +
@@ -162,7 +166,6 @@ annotate_figure(abundance_plots, top = text_grob("Sample-specific relative abund
 # We want to compare the initial and the refined relative abundances with the TRUE abundance
 ##############################################################################################################################################
 
-true_tax <- t(read.csv("true_abundance.csv", header = FALSE, sep=";", row.names=1, col.names = c("",rownames(init.read.matrix))))
 
 # The MSP's with identical taxa are collapsed into a single entity
 init_tax_abund <- matrix(0, nrow = dim(true_tax)[1], ncol = dim(true_tax)[2], dimnames=list(row.names(true_tax), colnames(true_tax)))
@@ -187,16 +190,203 @@ init_true <- init_tax_abund_norm-true_tax
 final_true <- final_tax_abund_norm-true_tax
 
 # Testing whether the predicted relative abundance distributions are identical
-wilcox.test(init_true, final_true, paired = TRUE)
+wilcox.test(init_true, final_true, paired = TRUE, conf.int=TRUE)
+wilcox_effsize(data.frame("init_true"=as.vector(init_true), "final_true"=as.vector(final_true)), init_true ~ final_true) # takes a long time to run
 
 # Visualizing
 final_true_sum <- colSums(final_true)
 init_true_sum <- colSums(init_true)
-
-#boxplot(colSums(init_true),colSums(final_true))
 
 violin.plot.dat <- as.data.frame(rbind(cbind(colSums(init_true),rep('MSPminer',length(colSums(init_true)))),cbind(colSums(final_true),rep('Refined',length(colSums(final_true))))))
 p <- ggplot(violin.plot.dat, aes(x=V2, y=as.numeric(V1), fill=V2)) + 
   geom_violin(trim=FALSE)  + theme_minimal() + geom_boxplot(width=0.1, fill="white") + scale_fill_brewer(palette="Blues") +
   labs(title="Plot of divergence between the true and predicted abundance", x="Method", y = "Difference in abundance (method-true)",fill="Method") 
 p
+
+# library(beeswarm)
+# 
+# beeswarm(abs(as.numeric(violin.plot.dat$V1[violin.plot.dat$V2 == "MSPminer"])) ~ abs(as.numeric(violin.plot.dat$V1[violin.plot.dat$V2 == "Refined"])), data = violin.plot.dat,
+#          method = 'swarm',
+#          pch = 16,
+#          xlab = '', ylab = 'Follow-up time (months)')#,
+# #         labels = c('Censored', 'Metastasis'))
+
+# Trying to create a scatterplot of the differences in predicted (MSPminer vs refined SG) and the true abundance
+
+plot(colSums(init_tax_abund), colSums(true_tax),xlim = c(0, 450), ylim = c(0,250))
+abline(a=0, b=1) # adding a x=y line
+points(colSums(final_tax_abund), colSums(true_tax),col="green")
+#points(colSums(true_tax), colSums(true_tax),col="red")
+
+
+
+# Creating a bubble plot to visualize the relative abundances 
+
+
+# converting the matrix to a df
+
+init.read.df <- data.frame(x=rep((dimnames(init_tax_abund)[[1]]),each=ncol(init_tax_abund)),y=rep((dimnames(init_tax_abund)[[2]]),times=nrow(init_tax_abund)),z=as.vector(init_tax_abund))
+final.read.df <- data.frame(x=rep((dimnames(final_tax_abund)[[1]]),each=ncol(final_tax_abund)),y=rep((dimnames(final_tax_abund)[[2]]),times=nrow(final_tax_abund)),z=as.vector(final_tax_abund))
+true_tax.df <- data.frame(x=rep((dimnames(true_tax)[[1]]),each=ncol(true_tax)),y=rep((dimnames(true_tax)[[2]]),times=nrow(true_tax)),z=as.vector(true_tax))
+
+
+par(mfrow = c(1,2))#,xpd=TRUE)
+p1 <- ggplot(data=init.read.df,aes(x=x,y=y,fill=z))+
+  geom_tile()+theme(axis.text.y=element_blank(), legend.position = "none") #+ scale_fill_gradient(low="white", high="blue")
+p2 <- ggplot(data=final.read.df,aes(x=x,y=y,fill=z))+
+  geom_tile()+theme(axis.text.y=element_blank(),legend.position = "none") #+ scale_fill_gradient(low="white", high="blue")
+p3 <- ggplot(data=true_tax.df,aes(x=x,y=y,fill=z))+
+  geom_tile()+theme(axis.text.y=element_blank(),legend.position = "none") #+ scale_fill_gradient(low="white", high="blue")
+
+grid.arrange(p1, p2, p3, ncol=3)
+
+ggplot(data = init.read.matrix.df %>% 
+         summarize(z = n(), AvgLevel = mean(as.integer(z))),
+       aes(x = init.read.matrix.df$x, y = init.read.matrix.df$y, size = init.read.matrix.df$z, col = AvgLevel)) +
+  geom_point() + theme_bw(base_size = 18) # +
+  # scale_colour_gradientn(
+  #   colours  = rev(topo.colors(2)),
+  #   na.value = "transparent",
+  #   breaks   = as.integer(MusicianInterestsSmall$Level) %>% 
+  #     unique %>% sort,
+  #   labels   = levels(MusicianInterestsSmall$Level),
+  #   limits   = c(as.integer(MusicianInterestsSmall$Level) %>% min,
+  #                as.integer(MusicianInterestsSmall$Level) %>% max)) +
+  # scale_size_continuous(range = c(3, 11)) 
+# 
+# library(metacoder)
+# 
+# 
+# #load ggplot2
+# library(ggplot2)
+# df <- data.frame(MSPminer=as.vector(init_true), refined=as.vector(final_true), )
+# #create new column for average measurement
+# df$avg <- rowMeans(df) 
+# 
+# #create new column for difference in measurements
+# df$diff <- df$MSPminer - df$refined
+# 
+# #view first six rows of data
+# head(df)
+# 
+# #find average difference
+# mean_diff <- mean(df$diff)
+# 
+# mean_diff
+# 
+# #find lower 95% confidence interval limits
+# lower <- mean_diff - 1.96*sd(df$diff)
+# 
+# lower
+# 
+# #find upper 95% confidence interval limits
+# upper <- mean_diff + 1.96*sd(df$diff)
+# 
+# upper
+# 
+# #create Bland-Altman plot
+# ggplot(df, aes(x = avg, y = diff)) +
+#   geom_point(size=2) +
+#   geom_hline(yintercept = mean_diff) +
+#   geom_hline(yintercept = lower, color = "red", linetype="dashed") +
+#   geom_hline(yintercept = upper, color = "red", linetype="dashed") +
+#   ggtitle("Bland-Altman Plot") +
+#   ylab("Difference Between Measurements") +
+#   xlab("Average Measurement") +  scale_y_continuous(trans='log10')
+# 
+# plot(true_tax,abs(final_true),col='#0571B0', ylim=c(0,40), log="x") #xlim=c(0,25)
+# par(new=TRUE)
+# plot(true_tax,abs(init_true),col='#999999', ylim=c(0,40), log="x")
+
+
+# The figure in the article
+
+df <- data.frame(MSPminer=as.vector(abs(initial_true)), Refined=as.vector(abs(final_true)), Abundance=as.vector(true_tax))
+colors <- c("MSPminer" = "black", "Refined" = '#92C5DE')
+p1 <- ggplot(data=df,  aes(x=Abundance, y = Refined, color="Refined")) + geom_point() + geom_point(data=df, aes(x=Abundance, y = MSPminer, color="MSPminer")) +
+  xlab("True relative abundance (log)") + theme_minimal() +xlim(-3,50) + scale_x_continuous(trans='log10') + 
+  ylab("Difference in relative abundance") +# ylim(0,50)+
+  ggtitle("Error in relative abundance given the calculated and true abundance of species-level taxa") + #, subtitle = "Each bar represents a sample. Samples are arranged by increasing abundance of 'Ruminococcus sp. SR1/5'.")+
+  scale_color_manual(values = colors) + labs(color="Method")
+p1
+
+
+
+# p2 <- ggplot(data=df,  aes(x=Abundance, y = Refined)) + geom_point() +
+#   xlab("True Abundance") + theme_minimal() + xlim(-3,50) +scale_x_continuous(trans='log10') + 
+#   ylab("Difference in abundance") + ylim(0,50)+
+#   ggtitle("B: Refined Signature Genes") + #, subtitle = "Each bar represents a sample. Samples are arranged by increasing abundance of 'Ruminococcus sp. SR1/5'.")+
+#   #  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), plot.title = element_text(size = 11))# +
+# #  labs(fill='Species') + scale_y_continuous(labels = function(x) paste0(x*100, "%"),limits = c(0, 1), expand = c(0, 0)) 
+# 
+# 
+# abundance_plots <- ggarrange(p1, p2 + theme(axis.text.y = element_blank(),
+#                                             axis.ticks.y = element_blank(),
+#                                             axis.title.y = element_blank() ), ncol=2, nrow=1, widths=c(1,0.91), common.legend=TRUE, legend = "bottom")
+# 
+# annotate_figure(abundance_plots, top = text_grob("Error in relative abundance given the true abundance of species-level taxa", 
+#                                                  color = "black", face = "bold", size = 15))
+
+
+
+
+
+# Testing the abundance using all genes from MSPminer (not onlky the SG/initial 100 genes)
+
+mspminer.read.matrix <- matrix(NA, nrow=dim(Clusterlist[[1]])[2], ncol=length(Clusterlist))
+sample.names <- colnames(Clusterlist[[1]])
+rownames(mspminer.read.matrix) <- sample.names # setting the sample names as rownames
+colnames(mspminer.read.matrix) <- names(Clusterlist) # setting the cluster ID's as colnames
+mspminer.Clusterlist <- Clusterlist
+
+
+
+for (id in names(Clusterlist)){
+  #removing the samples, with less than 3 genes with mapped reads
+  #init.gene.names <- outputs_parallel[[id]]$genes$init
+  init.colsum <- colSums(Clusterlist[[id]][, ])
+  init.mapped <- names(init.colsum[init.colsum >= n.mapped.minimum])
+  init.not_mapped <- sample.names[!sample.names %in% init.mapped]
+  mspminer.Clusterlist[[id]][,init.not_mapped] <- 0 # setting the counts to 0 if less than n.mapped.minimum genes have reads that map
+  
+  # The readcounts are divided by the gene length
+  init.reads <- mspminer.Clusterlist[[id]][, ] / GeneLengths[rownames(mspminer.Clusterlist[[id]])]
+  
+  # summing the read counts for the id/cluster/MGS
+  mspminer.read.matrix[, id] <- colSums(init.reads)
+}
+
+mspminer.abundance <- mspminer.read.matrix/rowSums(mspminer.read.matrix)
+mspminer_tax_abund <- matrix(0, nrow = dim(true_tax)[1], ncol = dim(true_tax)[2], dimnames=list(row.names(true_tax), colnames(true_tax)))
+
+for (j in 1:length(colnames(true_tax))){
+  col = colnames(true_tax)[j]
+  col = stringr::str_replace_all(col, "\\s", " ")  #changing the encoding
+  for (i in 1:length(tax_df$Taxonomy)){
+    if (col == tax_df$Taxonomy[i]){
+      mspminer_tax_abund[,j] <- mspminer_tax_abund[j] + mspminer.read.matrix[,tax_df$MSP[i]]
+    }
+  }
+}
+
+
+# Normalizing
+mspminer_tax_abund_norm <- ((mspminer_tax_abund)/rowSums(mspminer_tax_abund)*100)
+
+# Subtracting the true abundance from the predicted 
+mspminer_true <- mspminer_tax_abund_norm-true_tax
+
+# Testing whether the predicted relative abundance distributions are identical
+wilcox.test(mspminer_true, final_true, paired = TRUE, conf.int=TRUE)
+wilcox_effsize(data.frame("init_true"=as.vector(init_true), "final_true"=as.vector(final_true)), init_true ~ final_true) # takes a long time to run
+
+
+df <- data.frame(MSPminer=as.vector(abs(init_true)), Refined=as.vector(abs(final_true)), Abundance=as.vector(true_tax)) # , All_MSPminer=as.vector(abs(mspminer_true))
+colors <- c("MSPminer" = "black", "Refined" = '#92C5DE') #, All_MSPminer="red")
+p1 <- ggplot(data=df,  aes(x=Abundance, y = Refined, color="Refined")) + geom_point(size=1) + geom_point(data=df, aes(x=Abundance, y = MSPminer, color="MSPminer"),size=1) +# geom_point(data=df, aes(x=Abundance, y = All_MSPminer, color="All_MSPminer")) +
+  xlab("True relative abundance (log)") + theme_minimal() +xlim(-3,50) + scale_x_continuous(trans='log10') + 
+  ylab("Difference in relative abundance") + # ylim(0,30)+
+  ggtitle("Error in relative abundance given the calculated and true abundance of species-level taxa") +
+  scale_color_manual(values = colors) + labs(color="Method") 
+p1
